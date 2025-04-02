@@ -1,5 +1,6 @@
 import argparse
 import pathlib
+import shutil
 
 
 def find_files_by_extension(
@@ -15,9 +16,7 @@ def find_files_by_extension(
         raise FileNotFoundError(msg)
     if not root_path.is_dir():
         msg = f"指定されたパスはディレクトリではありません: {root_path}"
-        raise NotADirectoryError(
-            msg,
-        )
+        raise NotADirectoryError(msg)
 
     # 拡張子の先頭にドットが付いている場合は削除
     extension = extension.lstrip(".")
@@ -30,20 +29,61 @@ def find_files_by_extension(
     return list(root_path.rglob(search_pattern))
 
 
-# --- 関数の使用例 ---
+def copy_files_to_directory(
+    destination_dir: pathlib.Path,
+    source_files: list[pathlib.Path],
+) -> None:
+    """
+    指定されたファイルのリストを、指定されたディレクトリにコピーします。
+    コピー先ディレクトリが存在しない場合は作成します。
 
-# 検索したいルートディレクトリのパスを pathlib.Path オブジェクトとして指定
-# 例: Windows -> pathlib.Path(r"C:\Users\YourUser\Music")
-# 例: macOS/Linux -> pathlib.Path("/Users/youruser/Music")
-# 今回の例示構造に基づいて C ドライブ直下を仮定
+    Args:
+        destination_dir (pathlib.Path): ファイルのコピー先ディレクトリの Path オブジェクト。
+        source_files (list[pathlib.Path]): コピーするファイルの Path オブジェクトのリスト。
+    """
+    if not source_files:
+        print("コピー対象のファイルがありません。")
+        return
+
+    try:
+        # コピー先ディレクトリを作成 (存在しない場合のみ、親ディレクトリも含む)
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        print(f"コピー先ディレクトリ: {destination_dir}")
+
+        copied_count = 0
+        error_count = 0
+        for src_path in source_files:
+            # コピー先のファイルパスを構築 (ファイル名はそのまま)
+            dest_path = destination_dir / src_path.name
+            try:
+                print(f"コピー中: {src_path} -> {dest_path}")
+                # shutil.copy2 を使用してファイルとメタデータをコピー
+                shutil.copy2(src_path, dest_path)
+                copied_count += 1
+            except Exception as e:
+                print(f"エラー: {src_path} のコピーに失敗しました - {e}")
+                error_count += 1
+
+        print("-" * 20)
+        print(f"コピー完了: {copied_count} ファイル成功, {error_count} ファイル失敗")
+
+    except Exception as e:
+        print(f"コピー処理中に予期せぬエラーが発生しました: {e}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="指定ディレクトリから特定の拡張子のファイルを検索し、別のディレクトリにコピーします (アーティストとか曲ごとに分かれていて面倒くさいので書いた)",
+    )
     parser.add_argument(
-        "directory",
+        "source_directory",
         type=str,
         help="検索するルートディレクトリのパスを指定します.",
+    )
+    parser.add_argument(
+        "destination_directory",  # コピー先ディレクトリの引数を追加
+        type=str,
+        help="ファイルをコピーする先のディレクトリパスを指定します.",
     )
     parser.add_argument(
         "-e",
@@ -54,21 +94,32 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    target_root_directory = pathlib.Path(args.directory)
+    source_root_dir = pathlib.Path(args.source_directory)
+    destination_dir = pathlib.Path(
+        args.destination_directory,
+    )
 
-    # .flac ファイルを検索 (デフォルト)
-    # 必ず pathlib.Path オブジェクトを渡す
-    flac_files = find_files_by_extension(target_root_directory, args.extension)
-    if flac_files:
-        print(".flac ファイルが見つかりました:")
-        for file_path in flac_files:
-            print(file_path)
-    else:
-        print(
-            f"'{target_root_directory}' 以下に .flac ファイルは見つかりませんでした。",
-        )
+    try:
+        # ファイルを検索
+        found_files = find_files_by_extension(source_root_dir, args.extension)
 
-    print("-" * 20)
+        if found_files:
+            print(
+                f"{len(found_files)} 個の .{args.extension} ファイルが見つかりました:",
+            )
+            print("-" * 20)
+
+            # ファイルをコピー
+            copy_files_to_directory(destination_dir, found_files)
+        else:
+            print(
+                f"'{source_root_dir}' 以下に .{args.extension} ファイルは見つかりませんでした。",
+            )
+
+    except (FileNotFoundError, NotADirectoryError) as e:
+        print(f"エラー: {e}")
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {e}")
 
 
 if __name__ == "__main__":
